@@ -1268,6 +1268,7 @@
             const [items, setItems] = useState([]);
             const [form, setForm] = useState({ title: '', url: '', category: '', type: 'document' });
             const [deleteItem, setDeleteItem] = useState(null);
+            const [editingItem, setEditingItem] = useState(null);
 
             const reload = () => {
                 Promise.all([getDocs(getAppCollection('documents')), getDocs(getAppCollection('videos'))]).then(([d, v]) => {
@@ -1292,6 +1293,24 @@
                 }
             };
 
+            const handleUpdateContent = async () => {
+                if (!editingItem || !editingItem.title || !editingItem.url) return alert('กรุณากรอกข้อมูลให้ครบ');
+                try {
+                    // Use the existing type to determine collection. Changing type is not supported in edit for simplicity.
+                    const collectionName = editingItem.type === 'document' ? 'documents' : 'videos';
+                    await updateDoc(getAppDoc(collectionName, editingItem.id), {
+                        title: editingItem.title,
+                        url: editingItem.url,
+                        category: editingItem.category
+                    });
+                    setEditingItem(null);
+                    reload();
+                } catch (err) {
+                    console.error(err);
+                    alert("เกิดข้อผิดพลาดในการแก้ไข");
+                }
+            };
+
             return (
                 <div>
                     <h3 className="mb-4 text-xl font-bold">เนื้อหาเสริม</h3>
@@ -1309,15 +1328,63 @@
                     <div className="space-y-2">
                         {items.map(item => (
                             <div key={item.id} className="flex items-center justify-between rounded border bg-white p-3 hover:shadow-sm transition">
-                                <div className="flex items-center gap-3">
-                                    {item.type === 'video' ? <PlayCircle size={20} className="text-red-500"/> : <FileText size={20} className="text-blue-500"/>}
-                                    <span className="font-medium">{item.title}</span>
-                                    <a href={item.url} target="_blank" className="text-xs text-blue-400 hover:underline truncate max-w-[200px]">{item.url}</a>
+                                <div className="flex items-center gap-3 max-w-[70%]">
+                                    {item.type === 'video' ? <PlayCircle size={20} className="text-red-500 flex-shrink-0"/> : <FileText size={20} className="text-blue-500 flex-shrink-0"/>}
+                                    <div className="overflow-hidden">
+                                        <span className="font-medium block truncate">{item.title}</span>
+                                        <a href={item.url} target="_blank" className="text-xs text-blue-400 hover:underline truncate block">{item.url}</a>
+                                    </div>
                                 </div>
-                                <button onClick={() => setDeleteItem(item)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={18}/></button>
+                                <div className="flex gap-2 flex-shrink-0">
+                                    <button onClick={() => setEditingItem(item)} className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded transition" title="แก้ไข"><Edit size={18}/></button>
+                                    <button onClick={() => setDeleteItem(item)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded transition" title="ลบ"><Trash2 size={18}/></button>
+                                </div>
                             </div>
                         ))}
                     </div>
+
+                    {/* Edit Content Modal */}
+                    {editingItem && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm">
+                            <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden animate-fade-in-up">
+                                <div className="p-6 border-b bg-gray-50 flex justify-between items-center">
+                                    <h3 className="text-lg font-bold text-gray-800 flex items-center">
+                                        <Edit className="w-5 h-5 mr-2 text-blue-600"/> แก้ไข{editingItem.type === 'document' ? 'เอกสาร' : 'วิดีโอ'}
+                                    </h3>
+                                    <button onClick={() => setEditingItem(null)}><X className="text-gray-400 hover:text-gray-600"/></button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อเรื่อง</label>
+                                        <input className="w-full rounded border p-2 focus:ring-2 focus:ring-blue-500 outline-none" 
+                                            value={editingItem.title} 
+                                            onChange={e => setEditingItem({...editingItem, title: e.target.value})} 
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">URL (Link)</label>
+                                        <input className="w-full rounded border p-2 focus:ring-2 focus:ring-blue-500 outline-none" 
+                                            value={editingItem.url} 
+                                            onChange={e => setEditingItem({...editingItem, url: e.target.value})} 
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่</label>
+                                        <input className="w-full rounded border p-2 focus:ring-2 focus:ring-blue-500 outline-none" 
+                                            value={editingItem.category} 
+                                            onChange={e => setEditingItem({...editingItem, category: e.target.value})} 
+                                        />
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-gray-50 flex justify-end gap-2 border-t">
+                                    <button onClick={() => setEditingItem(null)} className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-200 transition">ยกเลิก</button>
+                                    <button onClick={handleUpdateContent} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 shadow transition flex items-center">
+                                        <Save size={16} className="mr-2"/> บันทึก
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     
                     <ConfirmationModal 
                         isOpen={!!deleteItem} 
