@@ -54,10 +54,11 @@
         import { 
             Book, PlayCircle, FileText, LogOut, User, Users, 
             CheckCircle, Clock, Award, BarChart2, Upload, Trash2, 
-            Plus, Menu, X, AlertCircle, Unlock, Shield, Home, UserCheck, UserX, FileUp, Video, HelpCircle, Edit, Save, Eye, ExternalLink
+            Plus, Menu, X, AlertCircle, Unlock, Shield, Home, UserCheck, UserX, FileUp, Video, HelpCircle, Edit, Save, Eye, EyeOff, ExternalLink,
+            CheckSquare, PieChart, TrendingUp, Activity, Link, Minimize2, Maximize2, Columns, Layout, Presentation, FileBox
         } from 'lucide-react';
 
-        // Import Firebase from Google CDN (Updated to 11.6.1)
+        // Import Firebase from Google CDN
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
         import { 
             getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, 
@@ -239,25 +240,18 @@
 
         // ฟังก์ชันจัดการลิงก์เอกสาร (รองรับ Google Drive/Docs)
         const getDocumentEmbedUrl = (url) => {
-            // 1. Check for Google Drive / Docs links
             if (url.includes('drive.google.com') || url.includes('docs.google.com')) {
-                // Extract ID using Regex
                 const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
                 if (idMatch && idMatch[1]) {
                     const fileId = idMatch[1];
-                    // ถ้าเป็น Docs/Sheets/Slides โดยตรง
                     if (url.includes('/document/') || url.includes('/presentation/') || url.includes('/spreadsheets/')) {
-                         // เปลี่ยน edit/view เป็น preview
                          if (url.includes('/document/')) return `https://docs.google.com/document/d/${fileId}/preview`;
                          if (url.includes('/presentation/')) return `https://docs.google.com/presentation/d/${fileId}/preview`;
                          if (url.includes('/spreadsheets/')) return `https://docs.google.com/spreadsheets/d/${fileId}/preview`;
                     }
-                    // กรณีเป็นไฟล์ทั่วไปใน Drive (PDF, Word ที่อัพขึ้นไป)
                     return `https://drive.google.com/file/d/${fileId}/preview`;
                 }
             }
-            
-            // 2. ถ้าเป็นลิงก์ไฟล์ตรงๆ (Direct Link) เช่น .pdf, .doc ให้ใช้ Google Docs Viewer
             return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
         };
 
@@ -285,7 +279,6 @@
                             </button>
                         </div>
                         <div className="flex-1 bg-gray-100 relative overflow-hidden">
-                             {/* Loading Indicator underneath */}
                              <div className="absolute inset-0 flex items-center justify-center z-0">
                                 <div className="flex flex-col items-center text-gray-400">
                                     <Clock className="w-8 h-8 mb-2 animate-spin"/>
@@ -611,6 +604,7 @@
                             <nav className="hidden md:flex space-x-4">
                                 <NavBtn active={tab === 'exam'} onClick={() => setTab('exam')} icon={<FileText size={18}/>} label="ทำข้อสอบ" />
                                 <NavBtn active={tab === 'history'} onClick={() => setTab('history')} icon={<BarChart2 size={18}/>} label="ผลการสอบ" />
+                                <NavBtn active={tab === 'analysis'} onClick={() => setTab('analysis')} icon={<PieChart size={18}/>} label="วิเคราะห์ผล" />
                                 <NavBtn active={tab === 'doc'} onClick={() => setTab('doc')} icon={<PlayCircle size={18}/>} label="คลังความรู้" />
                             </nav>
 
@@ -630,6 +624,7 @@
                             <div className="border-t bg-white p-4 md:hidden space-y-2 animate-fade-in-down">
                                 <MobileBtn active={tab === 'exam'} onClick={() => {setTab('exam'); setIsMenuOpen(false)}} label="ทำข้อสอบ" />
                                 <MobileBtn active={tab === 'history'} onClick={() => {setTab('history'); setIsMenuOpen(false)}} label="ผลการสอบ" />
+                                <MobileBtn active={tab === 'analysis'} onClick={() => {setTab('analysis'); setIsMenuOpen(false)}} label="วิเคราะห์ผล" />
                                 <MobileBtn active={tab === 'doc'} onClick={() => {setTab('doc'); setIsMenuOpen(false)}} label="คลังความรู้" />
                                 <div className="border-t pt-2">
                                     <button onClick={onLogout} className="w-full text-left text-red-600 py-2">ออกจากระบบ</button>
@@ -641,10 +636,127 @@
                     <main className="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">
                         {tab === 'exam' && <ExamListSection user={user} setTab={setTab} onPreview={setPreviewItem} />}
                         {tab === 'history' && <HistorySection user={user} />}
+                        {tab === 'analysis' && <AnalysisSection user={user} />}
                         {tab === 'doc' && <ResourceSection onPreview={setPreviewItem} />}
                     </main>
 
                     <DocumentPreviewModal item={previewItem} onClose={() => setPreviewItem(null)} />
+                </div>
+            );
+        }
+
+        function AnalysisSection({ user }) {
+            const [stats, setStats] = useState({ 
+                good: [], 
+                average: [], 
+                improve: [], 
+                totalExams: 0,
+                avgScore: 0
+            });
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                const fetchStats = async () => {
+                    const q = query(getAppCollection('scores'), where('userId', '==', user.uid));
+                    const snapshot = await getDocs(q);
+                    const scores = snapshot.docs.map(d => d.data());
+                    
+                    // Group by examTitle to average scores per subject
+                    const examGroups = {};
+                    scores.forEach(s => {
+                        if (!examGroups[s.examTitle]) {
+                            examGroups[s.examTitle] = { totalScore: 0, count: 0, title: s.examTitle, maxScore: s.totalQuestions };
+                        }
+                        examGroups[s.examTitle].totalScore += (s.score / s.totalQuestions) * 100;
+                        examGroups[s.examTitle].count += 1;
+                    });
+
+                    const processed = Object.values(examGroups).map(g => ({
+                        title: g.title,
+                        percentage: Math.round(g.totalScore / g.count)
+                    }));
+
+                    setStats({
+                        good: processed.filter(p => p.percentage >= 80),
+                        average: processed.filter(p => p.percentage >= 50 && p.percentage < 80),
+                        improve: processed.filter(p => p.percentage < 50),
+                        totalExams: scores.length,
+                        avgScore: scores.length > 0 ? Math.round(scores.reduce((acc, curr) => acc + (curr.score/curr.totalQuestions)*100, 0) / scores.length) : 0
+                    });
+                    setLoading(false);
+                };
+                fetchStats();
+            }, [user]);
+
+            if (loading) return <div className="text-center py-10"><Clock className="animate-spin inline mr-2"/> กำลังวิเคราะห์ข้อมูล...</div>;
+
+            return (
+                <div className="space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800 flex items-center"><PieChart className="mr-2"/> วิเคราะห์ผลการเรียน</h2>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <div className="text-gray-500 text-sm mb-1">จำนวนครั้งที่สอบ</div>
+                            <div className="text-2xl font-bold text-blue-600">{stats.totalExams}</div>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <div className="text-gray-500 text-sm mb-1">คะแนนเฉลี่ยรวม</div>
+                            <div className="text-2xl font-bold text-purple-600">{stats.avgScore}%</div>
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-3 gap-6">
+                        {/* Good */}
+                        <div className="bg-green-50 rounded-xl p-5 border border-green-100">
+                            <h3 className="font-bold text-green-800 mb-4 flex items-center"><Award className="mr-2 w-5 h-5"/> ยอดเยี่ยม (Score ≥ 80%)</h3>
+                            {stats.good.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {stats.good.map((item, i) => (
+                                        <li key={i} className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-center">
+                                            <span className="font-medium text-gray-700 truncate mr-2">{item.title}</span>
+                                            <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">{item.percentage}%</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <div className="text-center text-gray-400 py-4 text-sm">ยังไม่มีวิชาที่ได้คะแนนระดับนี้</div>
+                            )}
+                        </div>
+
+                        {/* Average */}
+                        <div className="bg-yellow-50 rounded-xl p-5 border border-yellow-100">
+                            <h3 className="font-bold text-yellow-800 mb-4 flex items-center"><Activity className="mr-2 w-5 h-5"/> ปานกลาง (50-79%)</h3>
+                            {stats.average.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {stats.average.map((item, i) => (
+                                        <li key={i} className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-center">
+                                            <span className="font-medium text-gray-700 truncate mr-2">{item.title}</span>
+                                            <span className="bg-yellow-100 text-yellow-700 text-xs font-bold px-2 py-1 rounded">{item.percentage}%</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <div className="text-center text-gray-400 py-4 text-sm">ยังไม่มีวิชาที่ได้คะแนนระดับนี้</div>
+                            )}
+                        </div>
+
+                        {/* Improve */}
+                        <div className="bg-red-50 rounded-xl p-5 border border-red-100">
+                            <h3 className="font-bold text-red-800 mb-4 flex items-center"><TrendingUp className="mr-2 w-5 h-5"/> ต้องปรับปรุง (Score &lt; 50%)</h3>
+                            {stats.improve.length > 0 ? (
+                                <ul className="space-y-2">
+                                    {stats.improve.map((item, i) => (
+                                        <li key={i} className="bg-white p-3 rounded-lg shadow-sm flex justify-between items-center">
+                                            <span className="font-medium text-gray-700 truncate mr-2">{item.title}</span>
+                                            <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded">{item.percentage}%</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <div className="text-center text-gray-400 py-4 text-sm">เยี่ยมมาก! ไม่มีวิชาที่ต้องปรับปรุง</div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             );
         }
@@ -868,6 +980,20 @@
             const [timer, setTimer] = useState(exam.timeLimit * 60);
             const [done, setDone] = useState(false);
             const [score, setScore] = useState(0);
+            const [checkedStatus, setCheckedStatus] = useState({});
+            
+            // Resources Logic
+            const hasResources = exam.fullFileUrl || exam.videoUrl || exam.summaryUrl || exam.slideUrl;
+            const [showResourcePanel, setShowResourcePanel] = useState(false);
+            const [activeResourceTab, setActiveResourceTab] = useState('exam'); // exam, video, summary, slide
+
+            // Auto-open if specific resource available and requested? No, defaults to closed or user action.
+            // But if user opens, we default to the first available one.
+            useEffect(() => {
+                if (showResourcePanel) {
+                    if (activeResourceTab === 'exam' && !exam.fullFileUrl) setActiveResourceTab(exam.videoUrl ? 'video' : (exam.summaryUrl ? 'summary' : 'slide'));
+                }
+            }, [showResourcePanel]);
 
             useEffect(() => {
                 if (done) return;
@@ -890,6 +1016,7 @@
                 });
                 setScore(s);
                 setDone(true);
+                setShowResourcePanel(false); 
                 
                 await addDoc(getAppCollection('scores'), {
                     userId: user.uid,
@@ -900,6 +1027,12 @@
                     timestamp: serverTimestamp()
                 });
             };
+            
+            const handleAnswer = (optionIndex) => {
+                if (checkedStatus[idx]) return; 
+                setAns(prev => ({ ...prev, [idx]: optionIndex }));
+                setCheckedStatus(prev => ({ ...prev, [idx]: true }));
+            };
 
             const formatTime = (seconds) => {
                 const m = Math.floor(seconds / 60);
@@ -907,13 +1040,11 @@
                 return `${m}:${String(s).padStart(2, '0')}`;
             };
 
-            // Helper to render recommended resources inside exam/result page
             const RecommendedResourcesSection = () => (
                 <div className="mt-12 border-t pt-8">
                      <h3 className="text-xl font-bold text-gray-800 flex items-center mb-6">
                         <PlayCircle className="w-6 h-6 mr-2 text-blue-600"/> คลังความรู้แนะนำ
                     </h3>
-                    
                     {recentDocs && recentDocs.length > 0 && (
                         <div className="mb-8">
                             <h4 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
@@ -926,7 +1057,6 @@
                             </div>
                         </div>
                     )}
-
                     {recentVideos && recentVideos.length > 0 && (
                         <div>
                             <h4 className="text-lg font-semibold text-gray-700 mb-4 flex items-center">
@@ -1005,62 +1135,224 @@
                                     })}
                                 </div>
                             </div>
-                            
+
                             <div className="mt-8">
                                 <button onClick={onFinish} className="rounded-lg bg-gray-800 px-6 py-2 text-white hover:bg-gray-900 transition">กลับหน้าหลัก</button>
                             </div>
                         </div>
-                        
-                        {/* แสดงเอกสารแนะนำท้ายผลสอบ */}
                         <RecommendedResourcesSection />
                     </div>
                 );
             }
 
             const q = exam.questions[idx];
+            const isChecked = checkedStatus[idx];
+            const isCorrect = isChecked && ans[idx] === q.correctAnswer;
+            
+            // Layout Logic
+            const isSplitView = hasResources && showResourcePanel;
+
+            // Resource Content Resolver
+            let resourceContent = null;
+            let currentUrl = null;
+            
+            if (activeResourceTab === 'exam') currentUrl = exam.fullFileUrl;
+            if (activeResourceTab === 'video') currentUrl = exam.videoUrl;
+            if (activeResourceTab === 'summary') currentUrl = exam.summaryUrl;
+            if (activeResourceTab === 'slide') currentUrl = exam.slideUrl;
+
+            // Embed Logic
+            if (activeResourceTab === 'video' && currentUrl) {
+                resourceContent = (
+                    <iframe src={getYouTubeEmbedUrl(currentUrl)} className="h-full w-full bg-black" title="Video Resource" frameBorder="0" allowFullScreen />
+                );
+            } else if (currentUrl) {
+                resourceContent = (
+                     <iframe src={getDocumentEmbedUrl(currentUrl)} className="h-full w-full bg-white" title="Document Resource" frameBorder="0" allowFullScreen />
+                );
+            } else {
+                resourceContent = (
+                    <div className="h-full w-full flex flex-col items-center justify-center text-gray-400 bg-gray-50">
+                        <FileText size={48} className="mb-2 opacity-50"/>
+                        <p>ไม่มีข้อมูลในส่วนนี้</p>
+                    </div>
+                );
+            }
+
             return (
-                <div className="mx-auto max-w-3xl pb-12">
-                    <div className="mb-4 flex justify-between items-center bg-white p-4 rounded shadow-sm">
-                        <span className="font-bold text-gray-700">ข้อที่ {idx + 1} / {exam.questions.length}</span>
-                        <span className={`font-mono font-bold px-3 py-1 rounded ${timer < 60 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-blue-50 text-blue-600'}`}>
-                            <Clock className="inline w-4 h-4 mr-1 mb-0.5"/> {formatTime(timer)}
-                        </span>
+                <div className="mx-auto max-w-7xl pb-12 px-2 sm:px-4">
+                    {/* Header Bar */}
+                    <div className="sticky top-16 z-20 mb-6 flex justify-between items-center bg-white p-4 rounded-xl shadow-md border border-gray-100">
+                        <div className="flex items-center gap-4">
+                            <span className="font-bold text-gray-800 text-lg hidden sm:inline">{exam.title}</span>
+                            <span className="font-bold text-gray-800 text-sm sm:hidden">ข้อที่ {idx + 1}/{exam.questions.length}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                            {hasResources && (
+                                <button 
+                                    onClick={() => setShowResourcePanel(!showResourcePanel)}
+                                    className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${showResourcePanel ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                >
+                                    {showResourcePanel ? <><Maximize2 size={16}/> ซ่อนเนื้อหา</> : <><Columns size={16}/> แสดงเนื้อหาประกอบ</>}
+                                </button>
+                            )}
+                            <span className={`font-mono font-bold px-3 py-1.5 rounded-lg flex items-center ${timer < 60 ? 'bg-red-100 text-red-600 animate-pulse' : 'bg-blue-50 text-blue-600'}`}>
+                                <Clock className="inline w-4 h-4 mr-1.5"/> {formatTime(timer)}
+                            </span>
+                        </div>
                     </div>
                     
-                    <div className="bg-white p-6 rounded shadow-sm mb-6">
-                        <div className="h-2 bg-gray-100 rounded-full mb-6">
-                             <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${((idx + 1) / exam.questions.length) * 100}%` }}></div>
-                        </div>
-                        <p className="text-lg font-medium mb-6 text-gray-900">{q.text}</p>
-                        <div className="space-y-3">
-                            {q.options.map((opt, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => setAns({ ...ans, [idx]: i })}
-                                    className={`flex w-full items-center rounded-lg border p-4 text-left transition group ${
-                                        ans[idx] === i ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 text-blue-800' : 'border-gray-200 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    <div className={`mr-3 flex h-8 w-8 items-center justify-center rounded-full border font-bold text-sm transition ${ans[idx] === i ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-500 bg-white group-hover:bg-blue-50'}`}>
-                                        {['A','B','C','D'][i]}
-                                    </div>
-                                    <span className="text-base">{opt}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                    {/* Main Content Grid */}
+                    <div className={`grid gap-6 ${isSplitView ? 'lg:grid-cols-12' : ''}`}>
+                        
+                        {/* Left Column: Question Card */}
+                        <div className={`${isSplitView ? 'lg:col-span-5 xl:col-span-5' : 'mx-auto max-w-3xl'}`}>
+                             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6 relative">
+                                <div className="flex justify-between items-center mb-4">
+                                    <span className="font-bold text-gray-500 text-sm">ข้อที่ {idx + 1} / {exam.questions.length}</span>
+                                    {/* Mobile Toggle Button */}
+                                    {hasResources && (
+                                        <button 
+                                            onClick={() => setShowResourcePanel(!showResourcePanel)}
+                                            className="sm:hidden text-blue-600 text-xs font-bold flex items-center bg-blue-50 px-2 py-1 rounded"
+                                        >
+                                            {showResourcePanel ? 'ซ่อน' : 'ดูเนื้อหา'}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="h-1.5 bg-gray-100 rounded-full mb-6">
+                                     <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${((idx + 1) / exam.questions.length) * 100}%` }}></div>
+                                </div>
+                                <p className="text-lg font-medium mb-6 text-gray-900 leading-relaxed">{q.text}</p>
+                                <div className="space-y-3">
+                                    {q.options.map((opt, i) => {
+                                        let btnClass = "border-gray-200 hover:bg-gray-50";
+                                        let circleClass = "text-gray-500 bg-white group-hover:bg-blue-50";
+                                        let textClass = "";
 
-                    <div className="flex justify-between mb-10">
-                        <button disabled={idx === 0} onClick={() => setIdx(idx - 1)} className="rounded-lg bg-gray-200 px-6 py-2.5 disabled:opacity-50 font-medium text-gray-600 hover:bg-gray-300 transition">ย้อนกลับ</button>
-                        {idx === exam.questions.length - 1 ? (
-                            <button onClick={handleSubmit} className="rounded-lg bg-green-600 px-8 py-2.5 text-white hover:bg-green-700 font-bold shadow-lg transition transform hover:-translate-y-0.5">ส่งคำตอบ</button>
-                        ) : (
-                            <button onClick={() => setIdx(idx + 1)} className="rounded-lg bg-blue-600 px-8 py-2.5 text-white hover:bg-blue-700 font-bold shadow-lg transition transform hover:-translate-y-0.5">ถัดไป</button>
+                                        if (isChecked) {
+                                            if (i === q.correctAnswer) {
+                                                btnClass = "border-green-500 bg-green-50 ring-1 ring-green-500";
+                                                circleClass = "bg-green-600 text-white border-green-600";
+                                                textClass = "text-green-800 font-medium";
+                                            } else if (ans[idx] === i) {
+                                                btnClass = "border-red-500 bg-red-50 ring-1 ring-red-500";
+                                                circleClass = "bg-red-600 text-white border-red-600";
+                                                textClass = "text-red-800 font-medium";
+                                            } else {
+                                                btnClass = "border-gray-100 opacity-50";
+                                            }
+                                        } else if (ans[idx] === i) {
+                                            btnClass = "border-blue-500 bg-blue-50 ring-1 ring-blue-500 text-blue-800";
+                                            circleClass = "bg-blue-600 text-white border-blue-600";
+                                        }
+
+                                        return (
+                                            <button
+                                                key={i}
+                                                onClick={() => handleAnswer(i)}
+                                                disabled={isChecked}
+                                                className={`flex w-full items-center rounded-lg border p-3 sm:p-4 text-left transition group ${btnClass}`}
+                                            >
+                                                <div className={`mr-3 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full border font-bold text-sm transition flex-shrink-0 ${circleClass}`}>
+                                                    {['A','B','C','D'][i]}
+                                                </div>
+                                                <span className={`text-sm sm:text-base ${textClass}`}>{opt}</span>
+                                                {isChecked && i === q.correctAnswer && <CheckCircle className="ml-auto w-5 h-5 text-green-600 flex-shrink-0"/>}
+                                                {isChecked && ans[idx] === i && i !== q.correctAnswer && <X className="ml-auto w-5 h-5 text-red-600 flex-shrink-0"/>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {isChecked && (
+                                    <div className={`mt-6 p-4 rounded-lg border animate-fade-in-up ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                        <div className="flex items-center mb-2">
+                                            {isCorrect ? <CheckCircle className="w-5 h-5 text-green-600 mr-2"/> : <X className="w-5 h-5 text-red-600 mr-2"/>}
+                                            <span className={`font-bold ${isCorrect ? 'text-green-700' : 'text-red-700'}`}>
+                                                {isCorrect ? 'ถูกต้อง!' : 'ผิดครับ! คำตอบที่ถูกคือ ' + ['A','B','C','D'][q.correctAnswer]}
+                                            </span>
+                                        </div>
+                                        {q.explanation && (
+                                            <div className="text-sm text-gray-600 ml-7">
+                                                <span className="font-semibold">คำอธิบาย:</span> {q.explanation}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-between mb-10">
+                                <button disabled={idx === 0} onClick={() => setIdx(idx - 1)} className="rounded-lg bg-gray-200 px-6 py-2.5 disabled:opacity-50 font-medium text-gray-600 hover:bg-gray-300 transition">ย้อนกลับ</button>
+                                {idx === exam.questions.length - 1 ? (
+                                    <button onClick={handleSubmit} className="rounded-lg bg-green-600 px-8 py-2.5 text-white hover:bg-green-700 font-bold shadow-lg transition transform hover:-translate-y-0.5">ส่งคำตอบ</button>
+                                ) : (
+                                    <button onClick={() => setIdx(idx + 1)} className="rounded-lg bg-blue-600 px-8 py-2.5 text-white hover:bg-blue-700 font-bold shadow-lg transition transform hover:-translate-y-0.5">ถัดไป</button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Right Column: Resource Viewer Panel */}
+                        {isSplitView && (
+                            <div className="lg:col-span-7 xl:col-span-7">
+                                <div className="lg:sticky lg:top-28 h-[500px] lg:h-[calc(100vh-10rem)] bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden flex flex-col animate-fade-in-up">
+                                     {/* Resource Tabs */}
+                                     <div className="bg-gray-50 border-b flex overflow-x-auto">
+                                         {exam.fullFileUrl && (
+                                            <button 
+                                                onClick={() => setActiveResourceTab('exam')}
+                                                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${activeResourceTab === 'exam' ? 'border-blue-600 text-blue-600 bg-blue-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
+                                            >
+                                                <FileText size={16} className="mr-2"/> ข้อสอบ
+                                            </button>
+                                         )}
+                                         {exam.videoUrl && (
+                                            <button 
+                                                onClick={() => setActiveResourceTab('video')}
+                                                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${activeResourceTab === 'video' ? 'border-red-600 text-red-600 bg-red-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
+                                            >
+                                                <PlayCircle size={16} className="mr-2"/> วิดีโอ
+                                            </button>
+                                         )}
+                                         {exam.summaryUrl && (
+                                            <button 
+                                                onClick={() => setActiveResourceTab('summary')}
+                                                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${activeResourceTab === 'summary' ? 'border-green-600 text-green-600 bg-green-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
+                                            >
+                                                <FileBox size={16} className="mr-2"/> สรุปย่อ
+                                            </button>
+                                         )}
+                                         {exam.slideUrl && (
+                                            <button 
+                                                onClick={() => setActiveResourceTab('slide')}
+                                                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${activeResourceTab === 'slide' ? 'border-orange-600 text-orange-600 bg-orange-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
+                                            >
+                                                <Presentation size={16} className="mr-2"/> สไลด์
+                                            </button>
+                                         )}
+                                         <div className="ml-auto px-4 py-3 flex items-center">
+                                            {currentUrl && <a href={currentUrl} target="_blank" className="text-gray-400 hover:text-blue-600"><ExternalLink size={16}/></a>}
+                                         </div>
+                                     </div>
+
+                                     {/* Content */}
+                                     <div className="relative flex-1 bg-gray-100">
+                                         <div className="absolute inset-0 flex items-center justify-center z-0">
+                                            <div className="flex flex-col items-center text-gray-400">
+                                                <Clock className="w-8 h-8 mb-2 animate-spin"/>
+                                                <span>กำลังโหลดไฟล์...</span>
+                                            </div>
+                                         </div>
+                                         <div className="relative z-10 h-full w-full bg-white">
+                                            {resourceContent}
+                                         </div>
+                                     </div>
+                                </div>
+                            </div>
                         )}
                     </div>
                     
-                    {/* แสดงเอกสารแนะนำระหว่างทำข้อสอบ */}
-                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200">
+                    <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 mt-8">
                         <div className="text-sm text-gray-500 mb-2 flex items-center">
                             <Book className="w-4 h-4 mr-1"/> แนะนำ: สามารถศึกษาข้อมูลเพิ่มเติมได้
                         </div>
@@ -1072,11 +1364,13 @@
 
         function HistorySection({ user }) {
             const [logs, setLogs] = useState([]);
-            useEffect(() => {
+            const [deleteItem, setDeleteItem] = useState(null);
+
+            const fetchHistory = () => {
                 const q = query(getAppCollection('scores'), where('userId', '==', user.uid));
                 
                 getDocs(q).then(s => {
-                    const data = s.docs.map(d => d.data());
+                    const data = s.docs.map(d => ({id: d.id, ...d.data()}));
                     data.sort((a, b) => {
                         const timeA = a.timestamp ? a.timestamp.seconds : Date.now() / 1000;
                         const timeB = b.timestamp ? b.timestamp.seconds : Date.now() / 1000;
@@ -1084,7 +1378,24 @@
                     });
                     setLogs(data);
                 });
+            };
+
+            useEffect(() => {
+                fetchHistory();
             }, [user]);
+
+            const handleDelete = async () => {
+                if (deleteItem) {
+                    try {
+                        await deleteDoc(getAppDoc('scores', deleteItem.id));
+                        setDeleteItem(null);
+                        fetchHistory(); // Refresh list
+                    } catch (error) {
+                        console.error("Error deleting log:", error);
+                        alert("ไม่สามารถลบข้อมูลได้");
+                    }
+                }
+            };
 
             return (
                 <div className="rounded-lg bg-white shadow-sm overflow-hidden">
@@ -1093,24 +1404,43 @@
                     </div>
                     <div className="divide-y">
                         {logs.map((l, i) => (
-                            <div key={i} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition">
-                                <div>
+                            <div key={i} className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 transition group">
+                                <div className="flex-1">
                                     <p className="font-bold text-gray-900">{l.examTitle}</p>
                                     <p className="text-xs text-gray-500 flex items-center mt-1">
                                         <Clock className="w-3 h-3 mr-1"/> 
                                         {l.timestamp ? l.timestamp.toDate().toLocaleString('th-TH') : 'กำลังบันทึก...'}
                                     </p>
                                 </div>
-                                <div className="text-right">
-                                    <span className="block text-lg font-bold text-blue-600">{l.score} / {l.totalQuestions}</span>
-                                    <span className={`text-xs font-bold px-2 py-0.5 rounded ${l.score/l.totalQuestions >= 0.5 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                        {l.score/l.totalQuestions >= 0.5 ? 'ผ่านเกณฑ์' : 'ไม่ผ่าน'}
-                                    </span>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-right">
+                                        <span className="block text-lg font-bold text-blue-600">{l.score} / {l.totalQuestions}</span>
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${l.score/l.totalQuestions >= 0.5 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            {l.score/l.totalQuestions >= 0.5 ? 'ผ่านเกณฑ์' : 'ไม่ผ่าน'}
+                                        </span>
+                                    </div>
+                                    <button 
+                                        onClick={() => setDeleteItem(l)}
+                                        className="text-gray-300 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
+                                        title="ลบประวัติ"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
                             </div>
                         ))}
                         {logs.length === 0 && <div className="p-8 text-center text-gray-500">ไม่มีประวัติการสอบ</div>}
                     </div>
+
+                    <ConfirmationModal 
+                        isOpen={!!deleteItem} 
+                        onClose={() => setDeleteItem(null)} 
+                        onConfirm={handleDelete} 
+                        title="ยืนยันการลบ" 
+                        message={`คุณต้องการลบรายการ "${deleteItem?.title || deleteItem?.examTitle}" ใช่หรือไม่?`}
+                        confirmText="ลบรายการ"
+                        confirmColor="bg-red-600 hover:bg-red-700"
+                    />
                 </div>
             );
         }
@@ -1163,7 +1493,7 @@
                     {/* ส่วนวิดีโอทั้งหมด */}
                     <div>
                         <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center border-b pb-2">
-                            <Video className="w-5 h-5 mr-2 text-red-500"/> วิดีโอทั้งหมด
+                            <Video className="w-5 h-5 mr-2 text-red-500"/> วิดีโอล่าสุด
                         </h3>
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             {videos.map((item, i) => (
@@ -1274,8 +1604,16 @@
         function AdminExamsManager() {
             const [exams, setExams] = useState([]);
             const [isOpen, setIsOpen] = useState(false);
-            // Unified form state for Create
-            const [createForm, setCreateForm] = useState({ title: '', timeLimit: 30, questions: [] });
+            // Unified form state for Create - added all url types
+            const [createForm, setCreateForm] = useState({ 
+                title: '', 
+                timeLimit: 30, 
+                questions: [], 
+                fullFileUrl: '',
+                videoUrl: '',
+                summaryUrl: '',
+                slideUrl: ''
+            });
             
             const [error, setError] = useState('');
             const [deleteId, setDeleteId] = useState(null);
@@ -1296,7 +1634,6 @@
                     return;
                 }
                 
-                // Validate questions
                 if (createForm.questions.some(q => !q.text || q.options.some(o => !o))) {
                      if(!window.confirm('มีบางข้อที่ข้อมูลไม่ครบถ้วน (โจทย์หรือตัวเลือกว่าง) ต้องการบันทึกหรือไม่?')) return;
                 }
@@ -1304,12 +1641,16 @@
                 await addDoc(getAppCollection('exams'), { 
                     title: createForm.title, 
                     timeLimit: createForm.timeLimit, 
-                    questions: createForm.questions, 
+                    questions: createForm.questions,
+                    fullFileUrl: createForm.fullFileUrl || '',
+                    videoUrl: createForm.videoUrl || '',
+                    summaryUrl: createForm.summaryUrl || '',
+                    slideUrl: createForm.slideUrl || '',
                     description: 'สร้างโดย Admin' 
                 });
                 
                 setIsOpen(false); 
-                setCreateForm({ title: '', timeLimit: 30, questions: [] });
+                setCreateForm({ title: '', timeLimit: 30, questions: [], fullFileUrl: '', videoUrl: '', summaryUrl: '', slideUrl: '' });
                 reload();
             };
 
@@ -1336,7 +1677,6 @@
                         }
                     };
                     reader.readAsText(file);
-                    // Reset input so same file can be selected again if needed
                     e.target.value = null;
                 }
             };
@@ -1360,7 +1700,11 @@
                     await updateDoc(getAppDoc('exams', editingExam.id), {
                         title: editingExam.title,
                         timeLimit: editingExam.timeLimit,
-                        questions: editingExam.questions
+                        questions: editingExam.questions,
+                        fullFileUrl: editingExam.fullFileUrl || '',
+                        videoUrl: editingExam.videoUrl || '',
+                        summaryUrl: editingExam.summaryUrl || '',
+                        slideUrl: editingExam.slideUrl || ''
                     });
                     setEditingExam(null);
                     reload();
@@ -1377,7 +1721,7 @@
                         <button onClick={() => setIsOpen(true)} className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 transition flex items-center"><Plus className="w-4 h-4 mr-1"/> เพิ่มข้อสอบ</button>
                     </div>
 
-                    {/* Create Exam Form (Enhanced) */}
+                    {/* Create Exam Form */}
                     {isOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 backdrop-blur-sm overflow-y-auto">
                             <div className="w-full max-w-4xl bg-white rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
@@ -1389,7 +1733,7 @@
                                 <div className="p-6 overflow-y-auto flex-1">
                                     {error && <div className="mb-4 text-sm text-red-600 bg-red-100 border border-red-200 rounded p-2 flex items-center"><AlertCircle className="w-4 h-4 mr-2"/>{error}</div>}
                                     
-                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อวิชา</label>
                                             <input className="w-full rounded border p-2 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="เช่น คณิตศาสตร์ ม.1" value={createForm.title} onChange={e => setCreateForm({...createForm, title: e.target.value})} />
@@ -1400,17 +1744,35 @@
                                         </div>
                                     </div>
 
+                                    {/* URLs Inputs */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-4 rounded-lg border">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ไฟล์ข้อสอบฉบับเต็ม (PDF)</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={createForm.fullFileUrl} onChange={e => setCreateForm({...createForm, fullFileUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์วิดีโอเฉลย/สอน</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="YouTube URL..." value={createForm.videoUrl} onChange={e => setCreateForm({...createForm, videoUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ไฟล์สรุป</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={createForm.summaryUrl} onChange={e => setCreateForm({...createForm, summaryUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์สไลด์ประกอบ</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={createForm.slideUrl} onChange={e => setCreateForm({...createForm, slideUrl: e.target.value})} />
+                                        </div>
+                                    </div>
+
                                     <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
                                         <label className="block text-sm font-bold text-blue-800 mb-2 flex items-center"><Upload className="w-4 h-4 mr-2"/> นำเข้าโจทย์จาก CSV (Import)</label>
                                         <input type="file" accept=".csv" onChange={handleFileUpload} ref={fileInputRef} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-white file:text-blue-700 hover:file:bg-blue-50 cursor-pointer" />
                                         <div className="mt-2 text-xs text-blue-600">
-                                            รองรับรูปแบบ: <code>Question, Option1, Option2, Option3, Option4, Answer(1-4/A-D), Explanation</code><br/>
-                                            (ระบบจะพยายามตรวจจับหัวตารางและรูปแบบให้อัตโนมัติ)
+                                            รองรับรูปแบบ: <code>Question, Option1, Option2, Option3, Option4, Answer(1-4/A-D), Explanation</code>
                                         </div>
                                     </div>
 
                                     <hr className="my-6 border-gray-200"/>
-                                    
                                     <h4 className="font-bold text-gray-700 mb-4">รายการคำถาม ({createForm.questions.length})</h4>
                                     <QuestionListEditor 
                                         questions={createForm.questions} 
@@ -1454,7 +1816,7 @@
                                 </div>
                                 
                                 <div className="p-6 overflow-y-auto flex-1">
-                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-1">ชื่อวิชา</label>
                                             <input className="w-full rounded border p-2 focus:ring-2 focus:ring-blue-500 outline-none" value={editingExam.title} onChange={e => setEditingExam({...editingExam, title: e.target.value})} />
@@ -1464,8 +1826,27 @@
                                             <input type="number" className="w-full rounded border p-2 focus:ring-2 focus:ring-blue-500 outline-none" value={editingExam.timeLimit} onChange={e => setEditingExam({...editingExam, timeLimit: parseInt(e.target.value)})} />
                                         </div>
                                     </div>
+                                    
+                                    {/* URLs Inputs for Edit */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-4 rounded-lg border">
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ไฟล์ข้อสอบฉบับเต็ม (PDF)</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={editingExam.fullFileUrl || ''} onChange={e => setEditingExam({...editingExam, fullFileUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์วิดีโอเฉลย/สอน</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="YouTube URL..." value={editingExam.videoUrl || ''} onChange={e => setEditingExam({...editingExam, videoUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ไฟล์สรุป</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={editingExam.summaryUrl || ''} onChange={e => setEditingExam({...editingExam, summaryUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์สไลด์ประกอบ</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={editingExam.slideUrl || ''} onChange={e => setEditingExam({...editingExam, slideUrl: e.target.value})} />
+                                        </div>
+                                    </div>
 
-                                    {/* Reusing the new Component */}
                                     <QuestionListEditor 
                                         questions={editingExam.questions} 
                                         onChange={(newQs) => setEditingExam({...editingExam, questions: newQs})} 
