@@ -51,11 +51,12 @@
         import { createRoot } from 'react-dom/client';
         
         // Import Lucide Icons
+        // Added 'Image' and 'Network' for Infographic and Mind Map
         import { 
             Book, PlayCircle, FileText, LogOut, User, Users, 
             CheckCircle, Clock, Award, BarChart2, Upload, Trash2, 
             Plus, Menu, X, AlertCircle, Unlock, Shield, Home, UserCheck, UserX, FileUp, Video, HelpCircle, Edit, Save, Eye, EyeOff, ExternalLink,
-            CheckSquare, PieChart, TrendingUp, Activity, Link, Minimize2, Maximize2, Columns, Layout, Presentation, FileBox
+            CheckSquare, PieChart, TrendingUp, Activity, Link, Minimize2, Maximize2, Columns, Layout, Presentation, FileBox, Image, Network
         } from 'lucide-react';
 
         // Import Firebase from Google CDN
@@ -983,15 +984,21 @@
             const [checkedStatus, setCheckedStatus] = useState({});
             
             // Resources Logic
-            const hasResources = exam.fullFileUrl || exam.videoUrl || exam.summaryUrl || exam.slideUrl;
+            // Updated hasResources to check for infographic and mindmap
+            const hasResources = exam.fullFileUrl || exam.videoUrl || exam.summaryUrl || exam.slideUrl || exam.infographicUrl || exam.mindmapUrl;
             const [showResourcePanel, setShowResourcePanel] = useState(false);
-            const [activeResourceTab, setActiveResourceTab] = useState('exam'); // exam, video, summary, slide
+            const [activeResourceTab, setActiveResourceTab] = useState('exam'); // exam, video, summary, slide, infographic, mindmap
 
-            // Auto-open if specific resource available and requested? No, defaults to closed or user action.
-            // But if user opens, we default to the first available one.
+            // Auto-open logic
             useEffect(() => {
                 if (showResourcePanel) {
-                    if (activeResourceTab === 'exam' && !exam.fullFileUrl) setActiveResourceTab(exam.videoUrl ? 'video' : (exam.summaryUrl ? 'summary' : 'slide'));
+                    if (activeResourceTab === 'exam' && !exam.fullFileUrl) {
+                        if (exam.videoUrl) setActiveResourceTab('video');
+                        else if (exam.summaryUrl) setActiveResourceTab('summary');
+                        else if (exam.slideUrl) setActiveResourceTab('slide');
+                        else if (exam.infographicUrl) setActiveResourceTab('infographic');
+                        else if (exam.mindmapUrl) setActiveResourceTab('mindmap');
+                    }
                 }
             }, [showResourcePanel]);
 
@@ -1160,6 +1167,8 @@
             if (activeResourceTab === 'video') currentUrl = exam.videoUrl;
             if (activeResourceTab === 'summary') currentUrl = exam.summaryUrl;
             if (activeResourceTab === 'slide') currentUrl = exam.slideUrl;
+            if (activeResourceTab === 'infographic') currentUrl = exam.infographicUrl;
+            if (activeResourceTab === 'mindmap') currentUrl = exam.mindmapUrl;
 
             // Embed Logic
             if (activeResourceTab === 'video' && currentUrl) {
@@ -1328,6 +1337,22 @@
                                                 className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${activeResourceTab === 'slide' ? 'border-orange-600 text-orange-600 bg-orange-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
                                             >
                                                 <Presentation size={16} className="mr-2"/> สไลด์
+                                            </button>
+                                         )}
+                                         {exam.infographicUrl && (
+                                            <button 
+                                                onClick={() => setActiveResourceTab('infographic')}
+                                                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${activeResourceTab === 'infographic' ? 'border-pink-600 text-pink-600 bg-pink-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
+                                            >
+                                                <Image size={16} className="mr-2"/> Infographic
+                                            </button>
+                                         )}
+                                         {exam.mindmapUrl && (
+                                            <button 
+                                                onClick={() => setActiveResourceTab('mindmap')}
+                                                className={`flex items-center px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap ${activeResourceTab === 'mindmap' ? 'border-teal-600 text-teal-600 bg-teal-50' : 'border-transparent text-gray-600 hover:bg-gray-100'}`}
+                                            >
+                                                <Network size={16} className="mr-2"/> Mind Map
                                             </button>
                                          )}
                                          <div className="ml-auto px-4 py-3 flex items-center">
@@ -1604,7 +1629,7 @@
         function AdminExamsManager() {
             const [exams, setExams] = useState([]);
             const [isOpen, setIsOpen] = useState(false);
-            // Unified form state for Create - added all url types
+            // Unified form state for Create - added infographicUrl and mindmapUrl
             const [createForm, setCreateForm] = useState({ 
                 title: '', 
                 timeLimit: 30, 
@@ -1612,7 +1637,9 @@
                 fullFileUrl: '',
                 videoUrl: '',
                 summaryUrl: '',
-                slideUrl: ''
+                slideUrl: '',
+                infographicUrl: '',
+                mindmapUrl: ''
             });
             
             const [error, setError] = useState('');
@@ -1646,11 +1673,13 @@
                     videoUrl: createForm.videoUrl || '',
                     summaryUrl: createForm.summaryUrl || '',
                     slideUrl: createForm.slideUrl || '',
+                    infographicUrl: createForm.infographicUrl || '',
+                    mindmapUrl: createForm.mindmapUrl || '',
                     description: 'สร้างโดย Admin' 
                 });
                 
                 setIsOpen(false); 
-                setCreateForm({ title: '', timeLimit: 30, questions: [], fullFileUrl: '', videoUrl: '', summaryUrl: '', slideUrl: '' });
+                setCreateForm({ title: '', timeLimit: 30, questions: [], fullFileUrl: '', videoUrl: '', summaryUrl: '', slideUrl: '', infographicUrl: '', mindmapUrl: '' });
                 reload();
             };
 
@@ -1704,7 +1733,9 @@
                         fullFileUrl: editingExam.fullFileUrl || '',
                         videoUrl: editingExam.videoUrl || '',
                         summaryUrl: editingExam.summaryUrl || '',
-                        slideUrl: editingExam.slideUrl || ''
+                        slideUrl: editingExam.slideUrl || '',
+                        infographicUrl: editingExam.infographicUrl || '',
+                        mindmapUrl: editingExam.mindmapUrl || ''
                     });
                     setEditingExam(null);
                     reload();
@@ -1761,6 +1792,14 @@
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์สไลด์ประกอบ</label>
                                             <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={createForm.slideUrl} onChange={e => setCreateForm({...createForm, slideUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ Infographic</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={createForm.infographicUrl} onChange={e => setCreateForm({...createForm, infographicUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ Mind Map</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={createForm.mindmapUrl} onChange={e => setCreateForm({...createForm, mindmapUrl: e.target.value})} />
                                         </div>
                                     </div>
 
@@ -1844,6 +1883,14 @@
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์สไลด์ประกอบ</label>
                                             <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={editingExam.slideUrl || ''} onChange={e => setEditingExam({...editingExam, slideUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ Infographic</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={editingExam.infographicUrl || ''} onChange={e => setEditingExam({...editingExam, infographicUrl: e.target.value})} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 mb-1">ลิงก์ Mind Map</label>
+                                            <input className="w-full rounded border p-2 text-sm" placeholder="URL..." value={editingExam.mindmapUrl || ''} onChange={e => setEditingExam({...editingExam, mindmapUrl: e.target.value})} />
                                         </div>
                                     </div>
 
